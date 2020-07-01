@@ -1,4 +1,5 @@
-from keras_resnet import models as resnet_models
+# from keras_resnet import models as resnet_models
+from . kerasResnet.keras_resnet import models as resnet_models
 from keras.applications.resnet50 import ResNet50
 from keras.layers import Input, Conv2DTranspose, BatchNormalization, ReLU, Conv2D, Lambda, MaxPooling2D, Dropout
 from keras.layers import ZeroPadding2D
@@ -7,12 +8,12 @@ from keras.initializers import normal, constant, zeros
 from keras.regularizers import l2
 import keras.backend as K
 import tensorflow as tf
-
+from keras import layers
 from losses import loss
 
 
 def nms(heat, kernel=3):
-    hmax = tf.nn.max_pool2d(heat, (kernel, kernel), strides=1, padding='SAME')
+    hmax = tf.nn.max_pool(heat, [1,kernel, kernel,3], strides=[1,1,1,1], padding='SAME')
     heat = tf.where(tf.equal(hmax, heat), heat, tf.zeros_like(heat))
     return heat
 
@@ -76,22 +77,29 @@ def evaluate_batch_item(batch_item_detections, num_classes, max_objects_per_clas
     return batch_item_detections
 
 
-def decode(hm, wh, reg, max_objects=100, nms=True, flip_test=False, num_classes=20, score_threshold=0.1):
+def decode(hm, wh, reg, max_objects=100, nms=True, flip_test=False, num_classes=95, score_threshold=0.1):
     if flip_test:
         hm = (hm[0:1] + hm[1:2, :, ::-1]) / 2
         wh = (wh[0:1] + wh[1:2, :, ::-1]) / 2
         reg = reg[0:1]
     scores, indices, class_ids, xs, ys = topk(hm, max_objects=max_objects)
+    print("indices {}".format(indices))
     b = tf.shape(hm)[0]
     # (b, h * w, 2)
+    k = 100
+    indices = tf.constant([100])
     reg = tf.reshape(reg, (b, -1, tf.shape(reg)[-1]))
+    print("reg shape {}".format(reg))
     # (b, h * w, 2)
     wh = tf.reshape(wh, (b, -1, tf.shape(wh)[-1]))
     # (b, k, 2)
-    topk_reg = tf.gather(reg, indices, batch_dims=1)
+    topk_reg = tf.gather(reg, indices, axis=1)
+    print("topk_reg shape {}".format(topk_reg.shape))
     # (b, k, 2)
-    topk_wh = tf.cast(tf.gather(wh, indices, batch_dims=1), tf.float32)
+    print("xs shape {}".format(xs.shape))
+    topk_wh = tf.cast(tf.gather(wh, indices, axis=1), tf.float32)
     topk_cx = tf.cast(tf.expand_dims(xs, axis=-1), tf.float32) + topk_reg[..., 0:1]
+    # print(topk_cx.shape)
     topk_cy = tf.cast(tf.expand_dims(ys, axis=-1), tf.float32) + topk_reg[..., 1:2]
     scores = tf.expand_dims(scores, axis=-1)
     class_ids = tf.cast(tf.expand_dims(class_ids, axis=-1), tf.float32)
@@ -99,6 +107,7 @@ def decode(hm, wh, reg, max_objects=100, nms=True, flip_test=False, num_classes=
     topk_x2 = topk_cx + topk_wh[..., 0:1] / 2
     topk_y1 = topk_cy - topk_wh[..., 1:2] / 2
     topk_y2 = topk_cy + topk_wh[..., 1:2] / 2
+ 
     # (b, k, 6)
     detections = tf.concat([topk_x1, topk_y1, topk_x2, topk_y2, scores, class_ids], axis=-1)
     if nms:
@@ -109,11 +118,10 @@ def decode(hm, wh, reg, max_objects=100, nms=True, flip_test=False, num_classes=
                                dtype=tf.float32)
     return detections
 
-
-def centernet(num_classes, backbone='resnet50', input_size=512, max_objects=100, score_threshold=0.1,
+def centernet(num_classes, backbone='resnet18', input_size=512, max_objects=100, score_threshold=0.1,
               nms=True,
               flip_test=False,
-              freeze_bn=True):
+              freeze_bn=False):
     assert backbone in ['resnet18', 'resnet34', 'resnet50', 'resnet101', 'resnet152']
     output_size = input_size // 4
     image_input = Input(shape=(None, None, 3))
@@ -123,6 +131,7 @@ def centernet(num_classes, backbone='resnet50', input_size=512, max_objects=100,
     reg_mask_input = Input(shape=(max_objects,))
     index_input = Input(shape=(max_objects,))
 
+    print('\nBACKBONE IS {}\n'.format(backbone))
     if backbone == 'resnet18':
         resnet = resnet_models.ResNet18(image_input, include_top=False, freeze_bn=freeze_bn)
     elif backbone == 'resnet34':
@@ -140,6 +149,8 @@ def centernet(num_classes, backbone='resnet50', input_size=512, max_objects=100,
     # C5 = resnet.get_layer('activation_49').output
 
     x = Dropout(rate=0.5)(C5)
+    # x = Conv2D(64, 1, padding='same', use_bias=True, kernel_initializer='he_normal', kernel_regularizer=l2(5e-4))(
+            # x)
     # decoder
     num_filters = 256
     for i in range(3):
@@ -154,23 +165,24 @@ def centernet(num_classes, backbone='resnet50', input_size=512, max_objects=100,
         x = BatchNormalization()(x)
         x = ReLU()(x)
 
+
     # hm header
-    y1 = Conv2D(64, 3, padding='same', use_bias=False, kernel_initializer='he_normal', kernel_regularizer=l2(5e-4))(x)
+    y1 = Conv2D(64, 3, padding='same', use_bias=True, kernel_initializer='he_normal', kernel_regularizer=l2(5e-4))(x)
     y1 = BatchNormalization()(y1)
     y1 = ReLU()(y1)
-    y1 = Conv2D(num_classes, 1, kernel_initializer='he_normal', kernel_regularizer=l2(5e-4), activation='sigmoid')(y1)
+    y1 = Conv2D(num_classes, 1, use_bias = True, kernel_initializer='he_normal', kernel_regularizer=l2(5e-4), activation='sigmoid')(y1)
 
     # wh header
-    y2 = Conv2D(64, 3, padding='same', use_bias=False, kernel_initializer='he_normal', kernel_regularizer=l2(5e-4))(x)
+    y2 = Conv2D(64, 3, padding='same', use_bias=True, kernel_initializer='he_normal', kernel_regularizer=l2(5e-4))(x)
     y2 = BatchNormalization()(y2)
     y2 = ReLU()(y2)
-    y2 = Conv2D(2, 1, kernel_initializer='he_normal', kernel_regularizer=l2(5e-4))(y2)
+    y2 = Conv2D(2, 1, use_bias = True ,kernel_initializer='he_normal', kernel_regularizer=l2(5e-4))(y2)
 
     # reg header
-    y3 = Conv2D(64, 3, padding='same', use_bias=False, kernel_initializer='he_normal', kernel_regularizer=l2(5e-4))(x)
+    y3 = Conv2D(64, 3, padding='same', use_bias=True, kernel_initializer='he_normal', kernel_regularizer=l2(5e-4))(x)
     y3 = BatchNormalization()(y3)
     y3 = ReLU()(y3)
-    y3 = Conv2D(2, 1, kernel_initializer='he_normal', kernel_regularizer=l2(5e-4))(y3)
+    y3 = Conv2D(2, 1, use_bias = True, kernel_initializer='he_normal', kernel_regularizer=l2(5e-4))(y3)
 
     loss_ = Lambda(loss, name='centernet_loss')(
         [y1, y2, y3, hm_input, wh_input, reg_input, reg_mask_input, index_input])

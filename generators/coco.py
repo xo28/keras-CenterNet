@@ -52,13 +52,17 @@ class CocoGenerator(Generator):
         # [{'supercategory':'person', 'id':1, 'name':'person'}, ...]
         categories = self.coco.loadCats(self.coco.getCatIds())
         categories.sort(key=lambda x: x['id'])
+        # print(categories)
 
         self.classes = {}
         self.coco_labels = {}
         self.coco_labels_inverse = {}
         for c in categories:
+            # print('c[id] is {}'.format(c['id']))
+            # print("len(self.classes) is {}".format(len(self.classes)))
             self.coco_labels[len(self.classes)] = c['id']
             self.coco_labels_inverse[c['id']] = len(self.classes)
+            # print(self.coco_labels_inverse)
             self.classes[c['name']] = len(self.classes)
 
         # also load the reverse (label -> name)
@@ -124,8 +128,9 @@ class CocoGenerator(Generator):
         """
         # {'license': 2, 'file_name': '000000259765.jpg', 'coco_url': 'http://images.cocodataset.org/test2017/000000259765.jpg', 'height': 480, 'width': 640, 'date_captured': '2013-11-21 04:02:31', 'id': 259765}
         image_info = self.coco.loadImgs(self.image_ids[image_index])[0]
-        path = os.path.join(self.data_dir, 'images', self.set_name, image_info['file_name'])
+        path = os.path.join(self.data_dir, self.set_name, image_info['file_name'])
         image = cv2.imread(path)
+        # image = image.astype('uint8')
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         return image
 
@@ -133,26 +138,32 @@ class CocoGenerator(Generator):
         """ Load annotations for an image_index.
         """
         # get ground truth annotations
+        # print(self.coco_labels_inverse)
         annotations_ids = self.coco.getAnnIds(imgIds=self.image_ids[image_index], iscrowd=False)
+        # print(annotations_ids)
         annotations = {'labels': np.empty((0,)), 'bboxes': np.empty((0, 4))}
-
+        # print(annotations)
         # some images appear to miss annotations (like image with id 257034)
         if len(annotations_ids) == 0:
             return annotations
 
         # parse annotations
         coco_annotations = self.coco.loadAnns(annotations_ids)
+        
+        # print(coco_annotations)
         for idx, a in enumerate(coco_annotations):
             # some annotations have basically no width / height, skip them
             if a['bbox'][2] < 1 or a['bbox'][3] < 1:
                 continue
-
+            # try:
             annotations['labels'] = np.concatenate(
-                [annotations['labels'], [self.coco_label_to_label(a['category_id'])]], axis=0)
+                [annotations['labels'], [self.coco_label_to_label(int(a['category_id']))]], axis=0)
+            # except:
+            # print(annotations['labels'], a['category_id'], self.coco_labels_inverse)
             annotations['bboxes'] = np.concatenate([annotations['bboxes'], [[
                 a['bbox'][0],
                 a['bbox'][1],
-                a['bbox'][0] + a['bbox'][2],
+                a['bbox'][0] + a['bbox'][2], 
                 a['bbox'][1] + a['bbox'][3],
             ]]], axis=0)
 
@@ -160,6 +171,6 @@ class CocoGenerator(Generator):
 
 
 if __name__ == '__main__':
-    dataset_dir = '/home/adam/.keras/datasets/coco/2017_118_5'
-    generator = CocoGenerator(data_dir=dataset_dir, set_name='test-dev2017')
+    dataset_dir = '/home/xo28/keras-CenterNet/dac'
+    generator = CocoGenerator(data_dir=dataset_dir, set_name='train')
     print(generator[0])

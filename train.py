@@ -13,14 +13,14 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 """
-
+import os
 import argparse
 from datetime import date, timedelta
 import keras
 import keras.backend as K
+from keras.utils import multi_gpu_model
 from keras.optimizers import Adam, SGD
 import keras.preprocessing.image
-import os
 import sys
 import tensorflow as tf
 
@@ -84,8 +84,8 @@ def create_callbacks(training_model, prediction_model, validation_generator, arg
     if args.evaluation and validation_generator:
         if args.dataset_type == 'coco':
             from eval.coco import CocoEval
-            # use prediction model for evaluation
-            evaluation = CocoEval(validation_generator, prediction_model, tensorboard=tensorboard_callback)
+            # use prediction model for evaluation #############[]
+            evaluation = CocoEval([validation_generator, prediction_model], tensorboard=tensorboard_callback)
         else:
             from eval.pascal import Evaluate
             evaluation = Evaluate(validation_generator, prediction_model, tensorboard=tensorboard_callback)
@@ -185,7 +185,7 @@ def create_generators(args):
 
         train_generator = CocoGenerator(
             args.coco_path,
-            'train2017',
+            'train',
             misc_effect=misc_effect,
             visual_effect=visual_effect,
             **common_args
@@ -193,7 +193,7 @@ def create_generators(args):
 
         validation_generator = CocoGenerator(
             args.coco_path,
-            'val2017',
+            'val',
             shuffle_groups=False,
             **common_args
         )
@@ -219,11 +219,11 @@ def check_args(parsed_args):
     if parsed_args.num_gpus > 1 and parsed_args.batch_size < parsed_args.num_gpus:
         raise ValueError(
             "Batch size ({}) must be equal to or higher than the number of GPUs ({})".format(parsed_args.batch_size,
-                                                                                             parsed_args.multi_gpu))
+                                                                                             parsed_args.multi_gpu_force))
 
     if parsed_args.num_gpus > 1 and parsed_args.snapshot:
         raise ValueError(
-            "Multi GPU training ({}) and resuming from snapshots ({}) is not supported.".format(parsed_args.multi_gpu,
+            "Multi GPU training ({}) and resuming from snapshots ({}) is not supported.".format(parsed_args.multi_gpu_force,
                                                                                                 parsed_args.snapshot))
 
     if parsed_args.num_gpus > 1 and not parsed_args.multi_gpu_force:
@@ -255,13 +255,13 @@ def parse_args(args):
                             help='Path to CSV file containing annotations for validation (optional).')
 
     parser.add_argument('--snapshot', help='Resume training from a snapshot.',
-                        default='/home/adam/.keras/models/ResNet-50-model.keras.h5')
+                        default= False) ###### 加上.h5 文件
     parser.add_argument('--freeze-backbone', help='Freeze training of backbone layers.', action='store_true')
 
     parser.add_argument('--batch-size', help='Size of the batches.', default=1, type=int)
-    parser.add_argument('--gpu', help='Id of the GPU to use (as reported by nvidia-smi).')
+    parser.add_argument('--gpu', help='Id of the GPU to use (as reported by nvidia-smi).',default="")
     parser.add_argument('--num_gpus', help='Number of GPUs to use for parallel processing.', type=int, default=0)
-    parser.add_argument('--multi-gpu-force', help='Extra flag needed to enable (experimental) multi-gpu support.',
+    parser.add_argument('--multi_gpu_force', help='Extra flag needed to enable (experimental) multi-gpu support.',
                         action='store_true')
     parser.add_argument('--epochs', help='Number of epochs to train.', type=int, default=200)
     parser.add_argument('--steps', help='Number of steps per epoch.', type=int, default=10000)
@@ -272,7 +272,7 @@ def parse_args(args):
                         default='logs/{}'.format(today))
     parser.add_argument('--no-snapshots', help='Disable saving snapshots.', dest='snapshots', action='store_false')
     parser.add_argument('--no-evaluation', help='Disable per epoch evaluation.', dest='evaluation',
-                        action='store_false')
+                        action='store_true')
     parser.add_argument('--random-transform', help='Randomly transform image and annotations.', action='store_true')
     parser.add_argument('--input-size', help='Rescale the image so the smallest side is min_side.', type=int,
                         default=512)
@@ -297,6 +297,7 @@ def main(args=None):
 
     # optionally choose specific GPU
     if args.gpu:
+        os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
         os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
 
     K.set_session(get_session())
@@ -306,11 +307,10 @@ def main(args=None):
 
     num_classes = train_generator.num_classes()
     model, prediction_model, debug_model = centernet(num_classes=num_classes, input_size=args.input_size,
-                                                     freeze_bn=True)
-
+                                                     freeze_bn=False)
     # create the model
     print('Loading model, this may take a second...')
-    model.load_weights(args.snapshot, by_name=True, skip_mismatch=True)
+    # model.load_weights(args.snapshot, by_name=True, skip_mismatch=True)
 
     # freeze layers
     if args.freeze_backbone:

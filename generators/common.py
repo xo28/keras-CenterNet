@@ -409,8 +409,8 @@ class Generator(keras.utils.Sequence):
                     radius = max(0, int(radius))
                     ct = np.array([(bbox[0] + bbox[2]) / 2, (bbox[1] + bbox[3]) / 2], dtype=np.float32)
                     ct_int = ct.astype(np.int32)
-                    draw_gaussian(batch_hms[b, :, :, cls_id], ct_int, radius_h, radius_w)
-                    draw_gaussian_2(batch_hms_2[b, :, :, cls_id], ct_int, radius)
+                    draw_gaussian(batch_hms[int(b), :, :, int(cls_id)], ct_int, radius_h, radius_w)
+                    draw_gaussian_2(batch_hms_2[int(b), :, :, int(cls_id)], ct_int, radius)
                     batch_whs[b, i] = 1. * w, 1. * h
                     batch_indices[b, i] = ct_int[1] * self.output_size + ct_int[0]
                     batch_regs[b, i] = ct - ct_int

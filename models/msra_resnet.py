@@ -106,7 +106,7 @@ def decode(hm, wh, reg, max_objects=100, nms=True, num_classes=20, score_thresho
     return detections
 
 
-def centernet(num_classes, backbone='resnet50', input_size=512, max_objects=100, score_threshold=0.1, nms=True):
+def centernet(num_classes, backbone='resnet18', input_size=512, max_objects=100, score_threshold=0.1, nms=True):
     assert backbone in ['resnet18', 'resnet34', 'resnet50']
     output_size = input_size // 4
     image_input = Input(shape=(None, None, 3))
@@ -173,19 +173,19 @@ def centernet(num_classes, backbone='resnet50', input_size=512, max_objects=100,
     x = ReLU()(x)
 
     # hm header
-    y1 = Conv2D(64, 3, padding='same', use_bias=False, kernel_initializer='he_normal', kernel_regularizer=l2(5e-4))(x)
+    y1 = Conv2D(4, 3, padding='same', use_bias=False, kernel_initializer='he_normal', kernel_regularizer=l2(5e-4))(x)
     y1 = BatchNormalization()(y1)
     y1 = ReLU()(y1)
     y1 = Conv2D(num_classes, 1, kernel_initializer='he_normal', kernel_regularizer=l2(5e-4), activation='sigmoid')(y1)
 
     # wh header
-    y2 = Conv2D(64, 3, padding='same', use_bias=False, kernel_initializer='he_normal', kernel_regularizer=l2(5e-4))(x)
+    y2 = Conv2D(4, 3, padding='same', use_bias=False, kernel_initializer='he_normal', kernel_regularizer=l2(5e-4))(x)
     y2 = BatchNormalization()(y2)
     y2 = ReLU()(y2)
     y2 = Conv2D(2, 1, kernel_initializer='he_normal', kernel_regularizer=l2(5e-4))(y2)
 
     # reg header
-    y3 = Conv2D(64, 3, padding='same', use_bias=False, kernel_initializer='he_normal', kernel_regularizer=l2(5e-4))(x)
+    y3 = Conv2D(4, 3, padding='same', use_bias=False, kernel_initializer='he_normal', kernel_regularizer=l2(5e-4))(x)
     y3 = BatchNormalization()(y3)
     y3 = ReLU()(y3)
     y3 = Conv2D(2, 1, kernel_initializer='he_normal', kernel_regularizer=l2(5e-4))(y3)
