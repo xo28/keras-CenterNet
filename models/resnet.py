@@ -1,5 +1,5 @@
-# from keras_resnet import models as resnet_models
-from . kerasResnet.keras_resnet import models as resnet_models
+from keras_resnet import models as resnet_models
+# from . kerasResnet.keras_resnet import models as resnet_models
 from keras.applications.resnet50 import ResNet50
 from keras.layers import Input, Conv2DTranspose, BatchNormalization, ReLU, Conv2D, Lambda, MaxPooling2D, Dropout
 from keras.layers import ZeroPadding2D
